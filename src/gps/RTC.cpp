@@ -12,10 +12,23 @@ RTCQuality getRTCQuality()
     return currentQuality;
 }
 
+bool rtcInterrupt = false;
+
+void rtcInterruptCb()
+{
+    rtcInterrupt = true;
+}
+
 // stuff that really should be in in the instance instead...
 static uint32_t
     timeStartMsec; // Once we have a GPS lock, this is where we hold the initial msec clock that corresponds to that time
 static uint64_t zeroOffsetSecs; // GPS based time in secs since 1970 - only updated once on initial lock
+
+#ifdef RV3028_RTC
+    Melopero_RV3028 rtc;
+#elif defined(PCF8563_RTC)
+    PCF8563_Class rtc;
+#endif
 
 /**
  * Reads the current date and time from the RTC module and updates the system time.
@@ -24,10 +37,8 @@ static uint64_t zeroOffsetSecs; // GPS based time in secs since 1970 - only upda
 void readFromRTC()
 {
     struct timeval tv; /* btw settimeofday() is helpful here too*/
-#ifdef RV3028_RTC
     if (rtc_found.address == RV3028_RTC) {
         uint32_t now = millis();
-        Melopero_RV3028 rtc;
 #ifdef I2C_SDA1
         rtc.initI2C(rtc_found.port == ScanI2C::I2CPort::WIRE1 ? Wire1 : Wire);
 #else
@@ -49,16 +60,15 @@ void readFromRTC()
             currentQuality = RTCQualityDevice;
         }
     }
-#elif defined(PCF8563_RTC)
     if (rtc_found.address == PCF8563_RTC) {
         uint32_t now = millis();
-        PCF8563_Class rtc;
-
 #ifdef I2C_SDA1
         rtc.begin(rtc_found.port == ScanI2C::I2CPort::WIRE1 ? Wire1 : Wire);
 #else
         rtc.begin();
 #endif
+        pinMode(PIN_RTC_INT, INPUT);
+        attachInterrupt(PIN_RTC_INT, rtcInterruptCb, FALLING);
 
         auto tc = rtc.getDateTime();
         tm t;
@@ -77,14 +87,12 @@ void readFromRTC()
             currentQuality = RTCQualityDevice;
         }
     }
-#else
     if (!gettimeofday(&tv, NULL)) {
         uint32_t now = millis();
         LOG_DEBUG("Read RTC time as %ld\n", tv.tv_sec);
         timeStartMsec = now;
         zeroOffsetSecs = tv.tv_sec;
     }
-#endif
 }
 
 /**
@@ -208,4 +216,19 @@ uint32_t getTime()
 uint32_t getValidTime(RTCQuality minQuality)
 {
     return (currentQuality >= minQuality) ? getTime() : 0;
+}
+
+void setRTCAlarm(uint32_t time) {
+    if (rtc_found.address == RV3028_RTC) {
+        // Melopero_RV3028 code here
+    }
+    if (rtc_found.address == PCF8563_RTC) {
+        rtc.setAlarmByMinutes(2); // FIXME only 2 minutes for testing
+        rtc.enableAlarm();
+
+        if (rtcInterrupt) {
+            rtcInterrupt = false;
+            rtc.resetAlarm();
+        }
+    }
 }

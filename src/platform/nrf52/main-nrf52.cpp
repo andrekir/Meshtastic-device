@@ -157,7 +157,7 @@ void nrf52Setup()
 
 void cpuDeepSleep(uint32_t msecToWake)
 {
-    // FIXME, configure RTC or button press to wake us
+    setRTCAlarm(msecToWake)
     // FIXME, power down SPI, I2C, RAMs
 #if HAS_WIRE
     Wire.end();

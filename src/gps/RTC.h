@@ -36,6 +36,8 @@ uint32_t getValidTime(RTCQuality minQuality);
 
 void readFromRTC();
 
+void setRTCAlarm(uint32_t time);
+
 #define SEC_PER_DAY 86400
 #define SEC_PER_HOUR 3600
 #define SEC_PER_MIN 60
