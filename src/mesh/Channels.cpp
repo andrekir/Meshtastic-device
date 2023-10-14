@@ -47,7 +47,8 @@ int16_t Channels::generateHash(ChannelIndex channelNum)
  * The hash is just an xor of the channel name followed by the channel PSK being used for encryption
  * If no suitable hash could be found, return -1
  */
-int8_t Channels::getIndexByHash(ChannelHash channelHash) {
+int8_t Channels::getIndexByHash(ChannelHash channelHash)
+{
     for (ChannelIndex chIndex = 0; chIndex < getNumChannels(); chIndex++) {
         if (hashes[chIndex] == channelHash) {
             return chIndex;
