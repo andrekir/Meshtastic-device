@@ -328,46 +328,53 @@ bool perhapsDecode(meshtastic_MeshPacket *p)
 
     // assert(p->which_payloadVariant == MeshPacket_encrypted_tag);
 
-    // Try to decrypt the packet if we can
-    size_t rawSize = p->encrypted.size;
-    assert(rawSize <= sizeof(bytes));
-    memcpy(bytes, p->encrypted.bytes,
-           rawSize); // we have to copy into a scratch buffer, because these bytes are a union with the decoded protobuf
-    crypto->decrypt(p->from, p->id, rawSize, bytes);
+    // Try to find a channel that works with this hash
+    for (ChannelIndex chIndex = 0; chIndex < channels.getNumChannels(); chIndex++) {
+        // Try to use this hash/channel pair
+        if (channels.decryptForHash(chIndex, p->channel)) {
+            // Try to decrypt the packet if we can
+            size_t rawSize = p->encrypted.size;
+            assert(rawSize <= sizeof(bytes));
+            memcpy(bytes, p->encrypted.bytes,
+                   rawSize); // we have to copy into a scratch buffer, because these bytes are a union with the decoded protobuf
+            crypto->decrypt(p->from, p->id, rawSize, bytes);
 
-    // printBytes("plaintext", bytes, p->encrypted.size);
+            // printBytes("plaintext", bytes, p->encrypted.size);
 
-    // Take those raw bytes and convert them back into a well structured protobuf we can understand
-    memset(&p->decoded, 0, sizeof(p->decoded));
-    if (!pb_decode_from_bytes(bytes, rawSize, &meshtastic_Data_msg, &p->decoded)) {
-        LOG_ERROR("Invalid protobufs in received mesh packet (bad psk?)!\n");
-    } else if (p->decoded.portnum == meshtastic_PortNum_UNKNOWN_APP) {
-        LOG_ERROR("Invalid portnum (bad psk?)!\n");
-    } else {
-        // parsing was successful
-        p->which_payload_variant = meshtastic_MeshPacket_decoded_tag; // change type to decoded
+            // Take those raw bytes and convert them back into a well structured protobuf we can understand
+            memset(&p->decoded, 0, sizeof(p->decoded));
+            if (!pb_decode_from_bytes(bytes, rawSize, &meshtastic_Data_msg, &p->decoded)) {
+                LOG_ERROR("Invalid protobufs in received mesh packet (bad psk?)!\n");
+            } else if (p->decoded.portnum == meshtastic_PortNum_UNKNOWN_APP) {
+                LOG_ERROR("Invalid portnum (bad psk?)!\n");
+            } else {
+                // parsing was successful
+                p->which_payload_variant = meshtastic_MeshPacket_decoded_tag; // change type to decoded
+                p->channel = chIndex;                                         // change to store the index instead of the hash
 
-        // Decompress if needed. jm
-        if (p->decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP) {
-            // Decompress the payload
-            char compressed_in[meshtastic_Constants_DATA_PAYLOAD_LEN] = {};
-            char decompressed_out[meshtastic_Constants_DATA_PAYLOAD_LEN] = {};
-            int decompressed_len;
+                // Decompress if needed. jm
+                if (p->decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP) {
+                    // Decompress the payload
+                    char compressed_in[meshtastic_Constants_DATA_PAYLOAD_LEN] = {};
+                    char decompressed_out[meshtastic_Constants_DATA_PAYLOAD_LEN] = {};
+                    int decompressed_len;
 
-            memcpy(compressed_in, p->decoded.payload.bytes, p->decoded.payload.size);
+                    memcpy(compressed_in, p->decoded.payload.bytes, p->decoded.payload.size);
 
-            decompressed_len = unishox2_decompress_simple(compressed_in, p->decoded.payload.size, decompressed_out);
+                    decompressed_len = unishox2_decompress_simple(compressed_in, p->decoded.payload.size, decompressed_out);
 
-            // LOG_DEBUG("\n\n**\n\nDecompressed length - %d \n", decompressed_len);
+                    // LOG_DEBUG("\n\n**\n\nDecompressed length - %d \n", decompressed_len);
 
-            memcpy(p->decoded.payload.bytes, decompressed_out, decompressed_len);
+                    memcpy(p->decoded.payload.bytes, decompressed_out, decompressed_len);
 
-            // Switch the port from PortNum_TEXT_MESSAGE_COMPRESSED_APP to PortNum_TEXT_MESSAGE_APP
-            p->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
+                    // Switch the port from PortNum_TEXT_MESSAGE_COMPRESSED_APP to PortNum_TEXT_MESSAGE_APP
+                    p->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
+                }
+
+                printPacket("decoded message", p);
+                return true;
+            }
         }
-
-        printPacket("decoded message", p);
-        return true;
     }
 
     LOG_WARN("No suitable channel found for decoding, hash was 0x%x!\n", p->channel);
@@ -448,21 +455,6 @@ void Router::handleReceived(meshtastic_MeshPacket *p, RxSource src)
 {
     // Also, we should set the time from the ISR and it should have msec level resolution
     p->rx_time = getValidTime(RTCQualityFromNet); // store the arrival timestamp for the phone
-
-    bool foundIndex = false;
-    // Find a channel index that works with this hash or return
-    for (ChannelIndex chIndex = 0; chIndex < channels.getNumChannels(); chIndex++) {
-        if (channels.decryptForHash(chIndex, p->channel)) {
-            p->channel = chIndex; // change to store the index instead of the hash
-            foundIndex = true;
-            break;
-        }
-    }
-
-    if (!foundIndex) {
-        printPacket("decoded packet channel index not found", p);
-        return;
-    }
 
     // Take those raw bytes and convert them back into a well structured protobuf we can understand
     bool decoded = perhapsDecode(p);
