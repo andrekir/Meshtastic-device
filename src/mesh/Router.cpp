@@ -456,6 +456,17 @@ void Router::handleReceived(meshtastic_MeshPacket *p, RxSource src)
     // Also, we should set the time from the ISR and it should have msec level resolution
     p->rx_time = getValidTime(RTCQualityFromNet); // store the arrival timestamp for the phone
 
+    // Find a channel index that works with this hash or return
+    if (p->which_payload_variant == meshtastic_MeshPacket_decoded_tag) {
+        int8_t chIndex = channels.getIndexByHash(p->channel);
+        if (chIndex < 0) {
+            printPacket("decoded packet channel not found", p);
+            return;
+        } else {
+            p->channel = chIndex; // change to store the index instead of the hash
+        }
+    }
+
     // Take those raw bytes and convert them back into a well structured protobuf we can understand
     bool decoded = perhapsDecode(p);
     if (decoded) {
