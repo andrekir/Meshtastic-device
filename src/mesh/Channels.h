@@ -42,6 +42,9 @@ class Channels
     /** Return the Channel for a specified name, return primary if not found. */
     meshtastic_Channel &getByName(const char *chName);
 
+    /** Return the Channel for a specified name, return null if not found. */
+    meshtastic_Channel* getByNameOrNull(const char *chName);
+
     /** Using the index inside the channel, update the specified channel's settings and role.  If this channel is being promoted
      * to be primary, force all other channels to be secondary.
      */

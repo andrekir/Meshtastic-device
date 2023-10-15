@@ -220,6 +220,17 @@ meshtastic_Channel &Channels::getByName(const char *chName)
     return getByIndex(getPrimaryIndex());
 }
 
+meshtastic_Channel* Channels::getByNameOrNull(const char *chName)
+{
+    for (ChannelIndex i = 0; i < getNumChannels(); i++) {
+        if (strcasecmp(getGlobalId(i), chName) == 0) {
+            return &channelFile.channels[i];
+        }
+    }
+
+    return nullptr;
+}
+
 void Channels::setChannel(const meshtastic_Channel &c)
 {
     meshtastic_Channel &old = getByIndex(c.index);
